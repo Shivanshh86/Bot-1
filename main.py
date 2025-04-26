@@ -7,32 +7,25 @@ import datetime
 import os
 from dotenv import load_dotenv
 
-# Load token from .env file
 load_dotenv()
 
-# Set up Intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 intents.members = True
 
-# Create the bot
 bot = commands.Bot(command_prefix=',', intents=intents)
-bot.remove_command('help')  # Remove default help command
+bot.remove_command('help')
 
-# Tracking voice channel join times
 voice_times = {}
-
-# Tickets storage
 user_tickets = {}
+milestone_checkpoints = {5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100}  # milestones to celebrate
 
-# Event: when bot is ready
 @bot.event
 async def on_ready():
     print(f'Bot is ready as {bot.user}')
     reset_leaderboard.start()
 
-# Event: when someone joins or leaves VC
 @bot.event
 async def on_voice_state_update(member, before, after):
     if after.channel and not before.channel:
@@ -42,17 +35,28 @@ async def on_voice_state_update(member, before, after):
         if member.id in voice_times:
             joined_at = voice_times.pop(member.id)
             time_spent = (datetime.datetime.now() - joined_at).total_seconds()
-            tickets_earned = int(time_spent // 600)  # 10 minutes = 1 ticket
+            tickets_earned = int(time_spent // 60)  # 1 minute = 1 ticket
             if tickets_earned > 0:
                 if member.id not in user_tickets:
                     user_tickets[member.id] = 0
+                previous_tickets = user_tickets[member.id]
                 user_tickets[member.id] += tickets_earned
                 print(f"Allotted {tickets_earned} ticket(s) to {member.name}")
+
+                # Check milestones
+                for milestone in milestone_checkpoints:
+                    if previous_tickets < milestone <= user_tickets[member.id]:
+                        await send_milestone_message(member, milestone)
             else:
                 print(f"No tickets allotted to {member.name} (not enough time)")
         print(f"{member.name} left VC")
 
-# Command: check your tickets
+async def send_milestone_message(member, milestone):
+    channel_id = 1320698170837303367  # <<<< Replace this with your announcement channel ID
+    channel = bot.get_channel(channel_id)
+    if channel:
+        await channel.send(f"🎉 Congrats {member.mention}! You've collected **{milestone}** tickets! Keep it up!")
+
 @bot.command(name="tickets")
 async def tickets(ctx):
     current_tickets = user_tickets.get(ctx.author.id, 0)
@@ -64,7 +68,6 @@ async def tickets(ctx):
     embed.set_footer(text=f"Requested by {ctx.author.name}")
     await ctx.send(embed=embed)
 
-# Command: leaderboard
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
     if not user_tickets:
@@ -80,7 +83,6 @@ async def leaderboard(ctx):
 
     await ctx.send(embed=embed)
 
-# Command: draw winners
 @bot.command(name="draw")
 @commands.has_permissions(administrator=True)
 async def draw(ctx, number_of_winners: int = 1):
@@ -107,7 +109,6 @@ async def draw(ctx, number_of_winners: int = 1):
     else:
         await ctx.send("Not enough participants to draw winners.")
 
-# Command: custom help menu
 @bot.command(name='help')
 async def help_command(ctx):
     embed = discord.Embed(title="📜 RaffleBot Commands", color=discord.Color.purple())
@@ -117,26 +118,23 @@ async def help_command(ctx):
     embed.add_field(name=",draw [number]", value="Admin only: Draw random winners", inline=False)
     await ctx.send(embed=embed)
 
-# Handle unknown commands nicely
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         await ctx.send("❓ Unknown command. Try `,help` to see all commands.")
     else:
-        raise error  # Let other errors raise normally
+        raise error
 
-# Task: reset leaderboard every Sunday at 23:59
 @tasks.loop(minutes=1)
 async def reset_leaderboard():
     now = datetime.datetime.now()
     if now.weekday() == 6 and now.hour == 23 and now.minute == 59:
         user_tickets.clear()
         print("Leaderboard reset automatically.")
-        channel_id = 1365343658076803194  # <<<< Replace with your channel ID
+        channel_id = 1365343658076803194  # <<<< Replace this too
         channel = bot.get_channel(channel_id)
         if channel:
             await channel.send("Leaderboard has been reset for the new week!")
 
-# Run the bot
 keep_alive()
 bot.run(os.getenv("TOKEN"))
